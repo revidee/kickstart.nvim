@@ -102,7 +102,7 @@ vim.g.have_nerd_font = false
 vim.opt.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.opt.relativenumber = true
+vim.opt.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.mouse = 'a'
@@ -189,6 +189,40 @@ vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left wind
 vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
+
+vim.keymap.set('n', '<F2>', '<cmd>DapTerminate<CR>', { desc = 'Terminate GDB' })
+vim.keymap.set('n', '<F3>', '<cmd>DapNew<CR>', { desc = 'Start GDB' })
+vim.keymap.set('n', '<F4>', '<cmd>DapPause<CR>', { desc = 'Pause Debugger' })
+vim.keymap.set('n', '<F5>', function()
+  require('dap').continue()
+end, { desc = 'Continue' })
+vim.keymap.set('n', '<F10>', function()
+  require('dap').step_over()
+end, { desc = 'Step Over' })
+vim.keymap.set('n', '<F11>', function()
+  require('dap').step_into()
+end, { desc = 'Step Into' })
+vim.keymap.set('n', '<F12>', function()
+  require('dap').step_out()
+end, { desc = 'Step Out' })
+vim.keymap.set('n', '<Leader>b', function()
+  require('dap').toggle_breakpoint()
+end, { desc = 'Toggle Breakpoint' })
+vim.keymap.set('n', '<Leader>lp', function()
+  require('dap').set_breakpoint(nil, nil, vim.fn.input 'Log point message: ')
+end, { desc = 'Log Point Msg' })
+vim.keymap.set('n', '<Leader>dr', function()
+  require('dap').repl.open()
+end, { desc = 'Open REPL' })
+vim.keymap.set('n', '<Leader>dl', function()
+  require('dap').run_last()
+end, { desc = 'Run Last' })
+vim.keymap.set({ 'n', 'v' }, '<Leader>dw', function()
+  require('dapui').toggle()
+end, { desc = 'DAP UI' })
+vim.keymap.set({ 'n', 'v' }, '<Leader>de', function()
+  require('dapui').eval()
+end, { desc = 'DAP Eval' })
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
@@ -614,8 +648,31 @@ require('lazy').setup({
       --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
+      local vue_language_server_path = '/usr/lib/node_modules/@vue/typescript-plugin'
+      local vue_plugin = {
+        name = '@vue/typescript-plugin',
+        location = vue_language_server_path,
+        languages = { 'vue', 'javascript', 'typescript' },
+        configNamespace = 'typescript',
+      }
+      -- If you are on most recent `nvim-lspconfig`
+      -- If you are not on most recent `nvim-lspconfig` or you want to override
       local servers = {
-        -- clangd = {},
+        clangd = {
+          root_dir = function(fname)
+            return require('lspconfig.util').root_pattern(
+              'Makefile',
+              'configure.ac',
+              'configure.in',
+              'config.h.in',
+              'meson.build',
+              'meson_options.txt',
+              'build.ninja'
+            )(fname) or require('lspconfig.util').root_pattern('compile_commands.json', 'compile_flags.txt')(fname) or require('lspconfig.util').find_git_ancestor(
+              fname
+            )
+          end,
+        },
         -- gopls = {},
         -- pyright = {},
         -- rust_analyzer = {},
@@ -625,7 +682,18 @@ require('lazy').setup({
         --    https://github.com/pmizio/typescript-tools.nvim
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
+        ts_ls = {
+          init_options = {
+            plugins = { vue_plugin },
+            vue = {
+              hybridMode = false,
+            },
+          },
+          filetypes = { 'typescript', 'javascript', 'javascriptreact', 'typescriptreact', 'vue' },
+        },
+        html = {},
+        cssls = {},
+        eslint = {},
         --
 
         lua_ls = {
@@ -672,6 +740,8 @@ require('lazy').setup({
           end,
         },
       }
+
+      vim.lsp.config('ts_ls', servers['ts_ls'])
     end,
   },
 
@@ -717,6 +787,60 @@ require('lazy').setup({
       },
     },
   },
+
+  {
+    'rcarriga/nvim-dap-ui',
+    dependencies = { 'mfussenegger/nvim-dap', 'nvim-neotest/nvim-nio' },
+    init = function()
+      local dap = require 'dap'
+      dap.adapters.gdb = {
+        type = 'executable',
+        command = 'gdb',
+        args = { '--interpreter=dap', '--eval-command', 'set print pretty on' },
+      }
+      dap.configurations.cpp = {
+        {
+          name = 'Debugger1',
+          type = 'gdb',
+          request = 'launch',
+          program = function()
+            return '~/ts/teamspeak_client_ui_v2/out/linux_x64/Debug_x64/TeamSpeak'
+          end,
+          args = '--cpa=debugger1 --remote-debugging-port=13171',
+          cwd = '~/ts/teamspeak_client_ui_v2/out/linux_x64/Debug_x64/',
+          stopAtBeginningOfMainSubprogram = false,
+        },
+        {
+          name = 'Debugger2',
+          type = 'gdb',
+          request = 'launch',
+          program = function()
+            return '~/ts/teamspeak_client_ui_v2/out/linux_x64/Debug_x64/TeamSpeak'
+          end,
+          args = '--cpa=debugger2 --remote-debugging-port=13172',
+          cwd = '~/ts/teamspeak_client_ui_v2/out/linux_x64/Debug_x64/',
+          stopAtBeginningOfMainSubprogram = false,
+        },
+        -- {
+        --   name = 'Select and attach to process',
+        --   type = 'gdb',
+        --   request = 'attach',
+        --   program = function()
+        --     return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
+        --   end,
+        --   pid = function()
+        --     local name = vim.fn.input 'Executable name (filter): '
+        --     return require('dap.utils').pick_process { filter = name }
+        --   end,
+        --   cwd = '${workspaceFolder}',
+        -- },
+      }
+      local dapui = require 'dapui'
+      dapui.setup()
+    end,
+  },
+
+  { 'pocco81/auto-save.nvim' },
 
   { -- Autocompletion
     'hrsh7th/nvim-cmp',
@@ -834,6 +958,16 @@ require('lazy').setup({
     end,
   },
 
+  {
+    'catppuccin/nvim',
+    init = function()
+      -- Load the colorscheme here.
+      -- Like many other themes, this one has different styles, and you could load
+      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+      vim.cmd.colorscheme 'catppuccin-mocha'
+    end,
+  },
+
   { -- You can easily change to a different colorscheme.
     -- Change the name of the colorscheme plugin below, and then
     -- change the command in the config to whatever the name of that colorscheme is.
@@ -841,15 +975,6 @@ require('lazy').setup({
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
     'folke/tokyonight.nvim',
     priority = 1000, -- Make sure to load this before all the other start plugins.
-    init = function()
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
-
-      -- You can configure highlights by doing something like:
-      vim.cmd.hi 'Comment gui=none'
-    end,
   },
 
   -- Highlight todo, notes, etc in comments
